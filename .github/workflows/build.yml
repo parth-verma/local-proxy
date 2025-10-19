@@ -83,6 +83,7 @@ jobs:
         notarize: true
         staple: true
         app_store_connect_api_key_json_file: app_store_key.json
+        sign_args: --code-signature-flags runtime
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
