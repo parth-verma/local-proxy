@@ -28,7 +28,7 @@ const PROXY_PORT = 30002
 type ProxyService struct {
 	ctx      context.Context
 	options  application.ServiceOptions
-	isPaused bool
+	IsPaused bool
 }
 
 // singleton instance for easy access from other services
@@ -38,9 +38,13 @@ func Instance() *ProxyService { return instance }
 
 func (p *ProxyService) StartProxy() {
 	proxy := goproxy.NewProxyHttpServer()
-	proxy.Verbose = true
 
 	proxy.OnRequest().HandleConnectFunc(func(host string, ctx *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
+		if p.IsPaused {
+			log.Printf("Proxy is paused, but still serving request for host: %s", host)
+			return goproxy.OkConnect, host
+		}
+
 		start := time.Now()
 		port := 443
 		i := strings.LastIndex(host, ":")
@@ -172,10 +176,6 @@ func (p *ProxyService) ServiceStartup(ctx context.Context, options application.S
 		log.Printf("Proxy Service already started")
 		return nil
 	}
-	instance = p
-	p.ctx = ctx
-	p.options = options
-	p.isPaused = true
 	// Start the local HTTP proxy as soon as the application starts.
 	go p.StartProxy()
 	return nil
@@ -187,12 +187,10 @@ func (p *ProxyService) ServiceStartup(ctx context.Context, options application.S
 func (p *ProxyService) ServiceShutdown() error {
 	// On macOS, revert the system proxy settings we previously applied.
 	if runtime.GOOS == "darwin" {
-		if !p.isPaused {
-			if err := unsetMacSystemProxy(); err != nil {
-				log.Printf("Warning: failed to unset macOS system proxy: %v", err)
-			} else {
-				log.Printf("macOS system HTTP(S) proxy disabled")
-			}
+		if err := unsetMacSystemProxy(); err != nil {
+			log.Printf("Warning: failed to unset macOS system proxy: %v", err)
+		} else {
+			log.Printf("macOS system HTTP(S) proxy disabled")
 		}
 	}
 	return nil
@@ -237,39 +235,35 @@ func unsetMacSystemProxy() error {
 	for _, svc := range services {
 		// Disable HTTP proxy
 		if out, err := exec.Command("networksetup", "-setwebproxystate", svc, "off").CombinedOutput(); err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("setwebproxystate(off) failed for %q: %w; output: %s", svc, err, strings.TrimSpace(string(out)))
-			}
+			firstErr = fmt.Errorf("setwebproxystate(off) failed for %q: %w; output: %s", svc, err, strings.TrimSpace(string(out)))
 		}
 		// Disable HTTPS proxy
 		if out, err := exec.Command("networksetup", "-setsecurewebproxystate", svc, "off").CombinedOutput(); err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("setsecurewebproxystate(off) failed for %q: %w; output: %s", svc, err, strings.TrimSpace(string(out)))
-			}
+			firstErr = fmt.Errorf("setsecurewebproxystate(off) failed for %q: %w; output: %s", svc, err, strings.TrimSpace(string(out)))
 		}
 	}
 	return firstErr
 }
 
 func (p *ProxyService) PauseProxy() error {
-	if p.isPaused {
+	if p.IsPaused {
 		return nil
 	}
 	err := unsetMacSystemProxy()
 	if err != nil {
 		return err
 	}
-	p.isPaused = true
+	p.IsPaused = true
 	return nil
 }
 
 func (p *ProxyService) ResumeProxy() error {
-	if !p.isPaused {
+	if !p.IsPaused {
 		return nil
 	}
 	if err := setMacSystemProxy(PROXY_PORT); err != nil {
 		return err
 	}
-	p.isPaused = true
+	p.IsPaused = false
 	return nil
 }

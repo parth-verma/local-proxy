@@ -31,7 +31,7 @@ func main() {
 
 	dbService := &db_service.DatabaseService{}
 	loggingService := &logging_service.LoggingService{DbService: dbService}
-	proxyService := &proxy_service.ProxyService{}
+	proxyService := &proxy_service.ProxyService{IsPaused: true}
 
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
@@ -75,7 +75,6 @@ func main() {
 	trayMenu := application.NewMenu()
 
 	var mainWindow *application.WebviewWindow
-	var isProxyPaused bool = true
 
 	trayMenu.Add("Open Window").OnClick(func(ctx *application.Context) {
 		if mainWindow == nil {
@@ -106,7 +105,7 @@ func main() {
 
 	// Function to update menu state based on proxy status
 	updateMenuState := func() {
-		if isProxyPaused {
+		if proxyService.IsPaused {
 			pauseMenuItem.SetEnabled(false)
 			resumeMenuItem.SetEnabled(true)
 		} else {
@@ -119,32 +118,31 @@ func main() {
 	updateMenuState()
 
 	pauseMenuItem.OnClick(func(ctx *application.Context) {
-		if !isProxyPaused {
-			if err := proxy_service.Instance().PauseProxy(); err != nil {
-				log.Printf("Failed to pause proxy: %v", err)
-			} else {
-				isProxyPaused = true
-				updateMenuState()
-				log.Printf("Proxy paused")
-			}
+
+		if err := proxyService.PauseProxy(); err != nil {
+			log.Printf("Failed to pause proxy: %v", err)
+		} else {
+			updateMenuState()
+			log.Printf("Proxy paused")
 		}
+
 	})
 
 	resumeMenuItem.OnClick(func(ctx *application.Context) {
-		if isProxyPaused {
-			if err := proxy_service.Instance().ResumeProxy(); err != nil {
-				log.Printf("Failed to resume proxy: %v", err)
-			} else {
-				isProxyPaused = false
-				updateMenuState()
-				log.Printf("Proxy resumed")
-			}
+
+		if err := proxyService.ResumeProxy(); err != nil {
+			log.Printf("Failed to resume proxy: %v", err)
+		} else {
+			updateMenuState()
+			log.Printf("Proxy resumed")
 		}
+
 	})
 
 	trayMenu.AddSeparator()
 
 	trayMenu.Add("Quit").OnClick(func(ctx *application.Context) {
+		proxyService.PauseProxy()
 		app.Quit()
 	})
 	systray.SetMenu(trayMenu)
