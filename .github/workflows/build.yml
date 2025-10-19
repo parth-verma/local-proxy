@@ -74,7 +74,7 @@ jobs:
       with:
         input_path: bin/local-proxy.app
         output_path: dist/local-proxy.app
-        p8_file: private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p12
+        p12_file: private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p12
         p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         notarize: true
         staple: true
