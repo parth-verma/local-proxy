@@ -60,8 +60,8 @@ func (p *ProxyService) StartProxy() {
 
 		if blocked {
 			log.Printf("CONNECT request for host: %s, port: %d, blocked: %v", modifiedHost, port, blocked)
-			go logging_service.Instance().LogRequest(host, "CONNECT", "", port, false, time.Since(start).Nanoseconds())
-			return goproxy.OkConnect, host
+			go logging_service.Instance().LogRequest(modifiedHost, "CONNECT", "", port, false, time.Since(start).Nanoseconds())
+			return goproxy.RejectConnect, host
 		}
 		go logging_service.Instance().LogRequest(modifiedHost, "CONNECT", "", port, true, time.Since(start).Nanoseconds())
 		return goproxy.OkConnect, host
