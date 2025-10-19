@@ -5,12 +5,12 @@ version: '3'
 
 # This information is used to generate the build assets.
 info:
-  companyName: "My Company" # The name of the company
-  productName: "My Product" # The name of the application
-  productIdentifier: "com.mycompany.myproduct" # The unique product identifier
-  description: "A program that does X" # The application description
-  copyright: "(c) 2025, My Company" # Copyright text
-  comments: "Some Product Comments" # Comments
+  companyName: "Parth Verma" # The name of the company
+  productName: "Local Proxy" # The name of the application
+  productIdentifier: "com.parth.local-proxy" # The unique product identifier
+  description: "Local Proxy" # The application description
+  copyright: "(c) 2025, Parth Verma" # Copyright text
+  comments: "Local Proxy" # Comments
   version: "0.0.1" # The application version
 
 # Dev mode configuration
@@ -60,4 +60,4 @@ fileAssociations:
 
 # Other data
 other:
-  - name: My Other Data
+  - name: Local Proxy

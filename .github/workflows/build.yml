@@ -3,6 +3,8 @@ name: Build Application
 on:
   push:
     branches: [ main ]
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -34,6 +36,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+          fetch-depth: 0
 
     - name: Set up Go
       uses: actions/setup-go@v5
@@ -48,6 +52,7 @@ jobs:
         cache: 'yarn'
         cache-dependency-path: frontend/yarn.lock
 
+
     - name: Install Wails CLI
       run: |
         go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.36
@@ -55,13 +60,34 @@ jobs:
     - name: Build application
       run: |
         wails3 task package
+    
+    - name: Install App Store Connect API Key
+      if: matrix.platform == 'darwin'
+      run: |
+        mkdir -p private_keys/
+        echo '${{ secrets.APP_STORE_CONNECT_API_KEY }}' > private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p8
+        echo '${{ secrets.APPLE_CERTIFICATE }}' > private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p12
+
+    - name: Sign macOS application
+      if: matrix.platform == 'darwin'
+      uses: indygreg/apple-code-sign-action@v1
+      with:
+        input_path: bin/local-proxy.app
+        output_path: dist/local-proxy.app
+        p8_file: private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p12
+        p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        notarize: true
+        staple: true
+        app_store_connect_api_issuer: ${{ secrets.APP_STORE_CONNECT_API_ISSUER }}
+        app_store_connect_api_key: private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p8
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: local-proxy-${{ matrix.platform }}-${{ matrix.arch }}
         path: |
           bin/local-proxy*
-          bin/*.app
+          dist/local-proxy.app
           bin/*.exe
           bin/*.AppImage
           bin/*.deb

@@ -1,15 +1,15 @@
 {
 	"fixed": {
-		"file_version": "0.1.0"
+		"file_version": "0.0.1"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "0.1.0",
-			"CompanyName": "My Company",
-			"FileDescription": "My Product Description",
-			"LegalCopyright": "© now, My Company",
-			"ProductName": "My Product",
-			"Comments": "This is a comment"
+			"ProductVersion": "0.0.1",
+			"CompanyName": "Parth Verma",
+			"FileDescription": "Local Proxy",
+			"LegalCopyright": "(c) 2025, Parth Verma",
+			"ProductName": "Local Proxy",
+			"Comments": "Local Proxy"
 		}
 	}
 }
