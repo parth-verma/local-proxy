@@ -70,7 +70,7 @@ jobs:
     - name: Write API Key to file
       env:
         API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
-      run: echo $API_KEY > app_store_key.json
+      run: echo $API_KEY | base64 -d > app_store_key.json
 
     - name: Sign macOS application
       if: matrix.platform == 'darwin'
