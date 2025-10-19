@@ -60,7 +60,7 @@ func (d *DatabaseService) initDBs() error {
 	}
 
 	// SQLite for blocked domains
-	sqlitePath := filepath.Join(dataDir, "local-proxy.db")
+	sqlitePath := filepath.Join(dataDir, "local-proxy", "local-proxy.db")
 	db, err := sql.Open("sqlite", sqlitePath+"?_journal_mode=WAL&_busy_timeout=500&_synchronous=NORMAL&_txlock=deferred")
 	if err != nil {
 		return fmt.Errorf("failed to open sqlite db: %w", err)

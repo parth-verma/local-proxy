@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LoggingService } from '../../bindings/changeme/logging_service';
+import { DatabaseService } from '../../bindings/changeme/db_service';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -22,8 +23,11 @@ import {
   Clock, 
   TrendingUp,
   RefreshCw,
-  Filter
+  Filter,
+  Shield,
+  ShieldOff,
 } from 'lucide-react';
+import { toast } from "sonner";
 
 interface DashboardProps {
   className?: string;
@@ -47,6 +51,8 @@ export function Dashboard({ className }: DashboardProps) {
   const [selectedTimeRange, setSelectedTimeRange] = useState('24h');
   const [decisionFilter, setDecisionFilter] = useState('all');
 
+  const queryClient = useQueryClient();
+
   // Query for dashboard data
   const { 
     data: dashboardData, 
@@ -60,25 +66,104 @@ export function Dashboard({ className }: DashboardProps) {
     refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
   });
 
-  // Filter requests based on decision filter
-  const filteredRequests = dashboardData?.requests?.filter(request => {
+  // Mutation for blocking a domain
+  const blockDomainMutation = useMutation({
+    mutationFn: (domain: string) => DatabaseService.BlockDomain(domain),
+    onSuccess: (success, domain) => {
+      if (success) {
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['domains'] });
+        toast.success(`Domain "${domain}" blocked successfully`);
+      } else {
+        toast.error('Failed to block domain');
+      }
+    },
+    onError: (err) => {
+      console.error('Failed to block domain:', err);
+      toast.error('Failed to block domain');
+    },
+  });
+
+  // Mutation for unblocking a domain
+  const unblockDomainMutation = useMutation({
+    mutationFn: (domain: string) => DatabaseService.UnblockDomain(domain),
+    onSuccess: (success, domain) => {
+      if (success) {
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['domains'] });
+        toast.success(`Domain "${domain}" unblocked successfully`);
+      } else {
+        toast.error('Failed to unblock domain');
+      }
+    },
+    onError: (err) => {
+      console.error('Failed to unblock domain:', err);
+      toast.error('Failed to unblock domain');
+    },
+  });
+
+  // Group requests by host/domain
+  const domainGroups = dashboardData?.requests?.reduce((groups, request) => {
+    const domain = request.host;
+    if (!groups[domain]) {
+      groups[domain] = {
+        domain,
+        total: 0,
+        approved: 0,
+        rejected: 0,
+        lastActivity: request.timestamp,
+        requests: []
+      };
+    }
+    
+    groups[domain].total++;
+    groups[domain].requests.push(request);
+    
+    if (request.decision === 'approved') {
+      groups[domain].approved++;
+    } else {
+      groups[domain].rejected++;
+    }
+    
+    // Update last activity timestamp
+    if (request.timestamp > groups[domain].lastActivity) {
+      groups[domain].lastActivity = request.timestamp;
+    }
+    
+    return groups;
+  }, {} as Record<string, { 
+    domain: string; 
+    total: number; 
+    approved: number; 
+    rejected: number; 
+    lastActivity: number;
+    requests: any[];
+  }>) || {};
+
+  // Convert to array and sort by total requests (descending)
+  const domainList = Object.values(domainGroups).sort((a, b) => b.total - a.total);
+
+  // Filter domains based on decision filter
+  const filteredDomains = domainList.filter(domain => {
     if (decisionFilter === 'all') return true;
-    return request.decision === decisionFilter;
-  }) || [];
+    if (decisionFilter === 'approved') return domain.approved > 0;
+    if (decisionFilter === 'rejected') return domain.rejected > 0;
+    return true;
+  });
 
   // Format timestamp for display
   const formatTimestamp = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
 
-  // Format duration for display (duration is stored in nanoseconds)
-  const formatDuration = (duration: number) => {
-    // Convert nanoseconds to milliseconds
-    const milliseconds = duration / 1000000;
-    if (milliseconds < 1000) {
-      return `${milliseconds.toFixed(1)}ms`;
-    }
-    return `${(milliseconds / 1000).toFixed(2)}s`;
+  // Helper function to handle domain blocking
+  const handleBlockDomain = (domain: string) => {
+    blockDomainMutation.mutate(domain);
+  };
+
+  // Helper function to handle domain unblocking
+  const handleUnblockDomain = (domain: string) => {
+    unblockDomainMutation.mutate(domain);
   };
 
   // Prepare chart data
@@ -257,17 +342,17 @@ export function Dashboard({ className }: DashboardProps) {
         </CardContent>
       </Card>
 
-      {/* Requests Table */}
+      {/* Domain Groups Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center space-x-2">
                 <Filter className="h-5 w-5" />
-                <span>Request Details</span>
+                <span>Domain Activity</span>
               </CardTitle>
               <CardDescription>
-                Detailed view of all requests in the selected time period
+                Grouped view of domains with request counts in the selected time period
               </CardDescription>
             </div>
             <div className="flex items-center space-x-2">
@@ -288,60 +373,82 @@ export function Dashboard({ className }: DashboardProps) {
           </div>
         </CardHeader>
         <CardContent>
-          {filteredRequests.length === 0 ? (
+          {filteredDomains.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Activity className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>No requests found for the selected time period and filter.</p>
+              <p>No domains found for the selected time period and filter.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>Host</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Path</TableHead>
-                    <TableHead>Port</TableHead>
-                    <TableHead>Decision</TableHead>
-                    <TableHead>Duration</TableHead>
+                    <TableHead>Domain</TableHead>
+                    <TableHead className="text-center">Total Requests</TableHead>
+                    <TableHead className="text-center">Approved</TableHead>
+                    <TableHead className="text-center">Blocked</TableHead>
+                    <TableHead>Last Activity</TableHead>
+                    <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRequests.map((request, index) => (
+                  {filteredDomains.map((domain, index) => (
                     <TableRow key={index}>
-                      <TableCell className="font-mono text-sm">
-                        {formatTimestamp(request.timestamp)}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {request.host}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {request.method}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm max-w-xs truncate">
-                        {request.path}
+                      <TableCell className="font-mono text-sm font-medium">
+                        {domain.domain}
                       </TableCell>
                       <TableCell className="text-center">
-                        {request.port}
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant={request.decision === 'approved' ? 'default' : 'destructive'}
-                          className={request.decision === 'approved' ? 'bg-green-100 text-green-800' : ''}
-                        >
-                          {request.decision === 'approved' ? (
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                          ) : (
-                            <XCircle className="h-3 w-3 mr-1" />
-                          )}
-                          {request.decision}
+                        <Badge variant="outline" className="text-lg font-semibold">
+                          {domain.total}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {formatDuration(request.duration)}
+                      <TableCell className="text-center">
+                        <Badge 
+                          variant="default"
+                          className="bg-green-100 text-green-800"
+                        >
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          {domain.approved}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge 
+                          variant="destructive"
+                          className="bg-red-100 text-red-800"
+                        >
+                          <XCircle className="h-3 w-3 mr-1" />
+                          {domain.rejected}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm text-gray-600">
+                        {formatTimestamp(domain.lastActivity)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex justify-center space-x-1">
+                          {domain.approved > domain.rejected ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleBlockDomain(domain.domain)}
+                              disabled={blockDomainMutation.isPending}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Shield className="h-3 w-3 mr-1" />
+                              Block
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleUnblockDomain(domain.domain)}
+                              disabled={unblockDomainMutation.isPending}
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                            >
+                              <ShieldOff className="h-3 w-3 mr-1" />
+                              Unblock
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

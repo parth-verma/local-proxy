@@ -59,7 +59,7 @@ func (p *ProxyService) StartProxy() {
 			go logging_service.Instance().LogRequest(host, "CONNECT", "", port, false, time.Since(start).Nanoseconds())
 			return goproxy.OkConnect, host
 		}
-		go logging_service.Instance().LogRequest(host, "CONNECT", "", port, true, time.Since(start).Nanoseconds())
+		go logging_service.Instance().LogRequest(modifiedHost, "CONNECT", "", port, true, time.Since(start).Nanoseconds())
 		return goproxy.OkConnect, host
 	})
 
