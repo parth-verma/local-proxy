@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/wailsapp/wails/v3/pkg/application"
 	"log"
-	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	_ "modernc.org/sqlite"
 )
 
 // DatabaseService manages all database operations (SQLite + time-series store)
@@ -18,7 +19,7 @@ type DatabaseService struct {
 	ctx     context.Context
 	options application.ServiceOptions
 
-	db     *sql.DB
+	Db     *sql.DB
 	dbPath string
 }
 
@@ -44,8 +45,8 @@ func (d *DatabaseService) ServiceStartup(ctx context.Context, options applicatio
 }
 
 func (d *DatabaseService) ServiceShutdown() error {
-	if d.db != nil {
-		if err := d.db.Close(); err != nil {
+	if d.Db != nil {
+		if err := d.Db.Close(); err != nil {
 			log.Printf("Warning: failed to close SQLite DB: %v", err)
 		}
 	}
@@ -60,7 +61,7 @@ func (d *DatabaseService) initDBs() error {
 
 	// SQLite for blocked domains
 	sqlitePath := filepath.Join(dataDir, "local-proxy.db")
-	db, err := sql.Open("sqlite", sqlitePath)
+	db, err := sql.Open("sqlite", sqlitePath+"?_journal_mode=WAL&_busy_timeout=500&_synchronous=NORMAL&_txlock=deferred")
 	if err != nil {
 		return fmt.Errorf("failed to open sqlite db: %w", err)
 	}
@@ -76,7 +77,7 @@ func (d *DatabaseService) initDBs() error {
 		return fmt.Errorf("failed to create blocked_domains: %w", err)
 	}
 
-	d.db = db
+	d.Db = db
 	d.dbPath = sqlitePath
 
 	return nil
@@ -84,7 +85,7 @@ func (d *DatabaseService) initDBs() error {
 
 // IsDomainBlocked checks exact or glob patterns (SQLite GLOB) case-insensitively.
 func (d *DatabaseService) IsDomainBlocked(domain string) bool {
-	if d == nil || d.db == nil {
+	if d == nil || d.Db == nil {
 		return false
 	}
 	domain = strings.ToLower(strings.TrimSpace(domain))
@@ -92,7 +93,7 @@ func (d *DatabaseService) IsDomainBlocked(domain string) bool {
 		return false
 	}
 	var exists int
-	err := d.db.QueryRow(
+	err := d.Db.QueryRow(
 		`SELECT 1 FROM blocked_domains
 	      WHERE lower(domain) = ?
 	         OR ? GLOB lower(domain)
@@ -110,7 +111,7 @@ func (d *DatabaseService) IsDomainBlocked(domain string) bool {
 }
 
 func (d *DatabaseService) BlockDomain(domain string) bool {
-	if d == nil || d.db == nil {
+	if d == nil || d.Db == nil {
 		return false
 	}
 	domain = strings.ToLower(strings.TrimSpace(domain))
@@ -120,7 +121,7 @@ func (d *DatabaseService) BlockDomain(domain string) bool {
 
 	createStmt := `INSERT OR IGNORE INTO blocked_domains (domain) VALUES (?)`
 
-	if _, err := d.db.Exec(createStmt, domain); err != nil {
+	if _, err := d.Db.Exec(createStmt, domain); err != nil {
 		log.Printf("DB error adding domain %q: %v", domain, err)
 		return false
 	}
@@ -128,7 +129,7 @@ func (d *DatabaseService) BlockDomain(domain string) bool {
 }
 
 func (d *DatabaseService) UnblockDomain(domain string) bool {
-	if d == nil || d.db == nil {
+	if d == nil || d.Db == nil {
 		return false
 	}
 	domain = strings.ToLower(strings.TrimSpace(domain))
@@ -136,7 +137,7 @@ func (d *DatabaseService) UnblockDomain(domain string) bool {
 		return false
 	}
 	deleteStmt := `DELETE FROM blocked_domains WHERE domain = ?`
-	if _, err := d.db.Exec(deleteStmt, domain); err != nil {
+	if _, err := d.Db.Exec(deleteStmt, domain); err != nil {
 		log.Printf("DB error removing domain %q: %v", domain, err)
 		return false
 	}
@@ -144,13 +145,13 @@ func (d *DatabaseService) UnblockDomain(domain string) bool {
 }
 
 func (d *DatabaseService) ListBlockedDomains(domain string) []string {
-	if d == nil || d.db == nil {
+	if d == nil || d.Db == nil {
 		return []string{}
 	}
 
 	listStmt := `SELECT domain FROM blocked_domains`
 
-	rows, err := d.db.Query(listStmt, domain)
+	rows, err := d.Db.Query(listStmt, domain)
 	if err != nil {
 		log.Printf("DB error listing blocked domains: %v", err)
 		return []string{}

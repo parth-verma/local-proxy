@@ -4,7 +4,6 @@ go 1.24.0
 
 require (
 	github.com/elazarl/goproxy v1.4.0
-	github.com/nakabonne/tstorage v0.3.6
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.36
 	modernc.org/sqlite v1.36.0
 )

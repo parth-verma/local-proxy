@@ -2,13 +2,15 @@ package main
 
 import (
 	"changeme/db_service"
+	"changeme/logging_service"
 	"changeme/proxy_service"
 	"embed"
-	_ "embed"
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
+
 	"log"
 	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -27,6 +29,10 @@ var iconFS embed.FS
 // logs any error that might occur.
 func main() {
 
+	dbService := &db_service.DatabaseService{}
+	loggingService := &logging_service.LoggingService{DbService: dbService}
+	proxyService := &proxy_service.ProxyService{}
+
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
@@ -36,8 +42,9 @@ func main() {
 		Name:        "local-proxy",
 		Description: "A demo of using raw HTML & CSS",
 		Services: []application.Service{
-			application.NewService(&db_service.DatabaseService{}),
-			application.NewService(&proxy_service.ProxyService{}),
+			application.NewService(dbService),
+			application.NewService(loggingService),
+			application.NewService(proxyService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -68,6 +75,7 @@ func main() {
 	trayMenu := application.NewMenu()
 
 	var mainWindow *application.WebviewWindow
+	var isProxyPaused bool = true
 
 	trayMenu.Add("Open Window").OnClick(func(ctx *application.Context) {
 		if mainWindow == nil {
@@ -85,6 +93,53 @@ func main() {
 		// Show and focus the existing/new window
 		mainWindow.Show()
 		mainWindow.Focus()
+	})
+
+	trayMenu.AddSeparator()
+
+	// Add pause/resume proxy menu items
+	pauseMenuItem := trayMenu.Add("Pause Proxy")
+	resumeMenuItem := trayMenu.Add("Resume Proxy")
+
+	// Initially disable resume since proxy starts active
+	resumeMenuItem.SetEnabled(false)
+
+	// Function to update menu state based on proxy status
+	updateMenuState := func() {
+		if isProxyPaused {
+			pauseMenuItem.SetEnabled(false)
+			resumeMenuItem.SetEnabled(true)
+		} else {
+			pauseMenuItem.SetEnabled(true)
+			resumeMenuItem.SetEnabled(false)
+		}
+	}
+
+	// Set initial state
+	updateMenuState()
+
+	pauseMenuItem.OnClick(func(ctx *application.Context) {
+		if !isProxyPaused {
+			if err := proxy_service.Instance().PauseProxy(); err != nil {
+				log.Printf("Failed to pause proxy: %v", err)
+			} else {
+				isProxyPaused = true
+				updateMenuState()
+				log.Printf("Proxy paused")
+			}
+		}
+	})
+
+	resumeMenuItem.OnClick(func(ctx *application.Context) {
+		if isProxyPaused {
+			if err := proxy_service.Instance().ResumeProxy(); err != nil {
+				log.Printf("Failed to resume proxy: %v", err)
+			} else {
+				isProxyPaused = false
+				updateMenuState()
+				log.Printf("Proxy resumed")
+			}
+		}
 	})
 
 	trayMenu.AddSeparator()

@@ -2,23 +2,20 @@ package proxy_service
 
 import (
 	"changeme/db_service"
+	"changeme/logging_service"
 	"context"
 	"fmt"
-	"github.com/elazarl/goproxy"
-	"github.com/nakabonne/tstorage"
-	"github.com/wailsapp/wails/v3/pkg/application"
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/elazarl/goproxy"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 const PROXY_PORT = 30002
@@ -29,51 +26,43 @@ const PROXY_PORT = 30002
 // Changing the name of this struct will change the name of the services class in the frontend
 // Bound methods will exist inside frontend/bindings/github.com/user/proxy_service under the name of the struct
 type ProxyService struct {
-	ctx     context.Context
-	options application.ServiceOptions
-	tDB     tstorage.Storage
-	tDBPath string
+	ctx      context.Context
+	options  application.ServiceOptions
+	isPaused bool
 }
+
+// singleton instance for easy access from other services
+var instance *ProxyService
+
+func Instance() *ProxyService { return instance }
 
 func (p *ProxyService) StartProxy() {
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.Verbose = true
 
-	// Intercept all requests (HTTP and CONNECT) to enforce domain blocking and record to tDB
-
-	proxy.OnRequest().DoFunc(func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+	proxy.OnRequest().HandleConnectFunc(func(host string, ctx *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
 		start := time.Now()
-		host := r.URL.Host
-		if host == "" {
-			host = r.Host
-		}
-		// Extract hostname and port
-		hostOnly := host
-		port := 0
-		if i := strings.LastIndex(host, ":"); i != -1 {
-			hostOnly = host[:i]
+		port := 443
+		i := strings.LastIndex(host, ":")
+		if i != -1 {
 			if pnum, err := strconv.Atoi(host[i+1:]); err == nil {
 				port = pnum
 			}
 		}
-		if port == 0 {
-			if r.Method == http.MethodConnect || strings.EqualFold(r.URL.Scheme, "https") {
-				port = 443
-			} else {
-				port = 80
-			}
-		}
-		method := r.Method
-		path := r.URL.Path
-		blocked := db_service.Instance().IsDomainBlocked(strings.ToLower(hostOnly))
-		dur := time.Since(start).Nanoseconds()
+
+		modifiedHost := host[:i]
+
+		blocked := db_service.Instance().IsDomainBlocked(strings.ToLower(modifiedHost))
+
 		if blocked {
-			p.logRequest(hostOnly, method, path, port, false, dur)
-			return r, goproxy.NewResponse(r, goproxy.ContentTypeText, http.StatusForbidden, "Domain blocked")
+			log.Printf("CONNECT request for host: %s, port: %d, blocked: %v", modifiedHost, port, blocked)
+			go logging_service.Instance().LogRequest(host, "CONNECT", "", port, false, time.Since(start).Nanoseconds())
+			return goproxy.OkConnect, host
 		}
-		p.logRequest(hostOnly, method, path, port, true, dur)
-		return r, nil
+		go logging_service.Instance().LogRequest(host, "CONNECT", "", port, true, time.Since(start).Nanoseconds())
+		return goproxy.OkConnect, host
 	})
+
 	// Start the proxy server asynchronously so we can proceed to set system proxy after it is ready.
 	errCh := make(chan error, 1)
 	go func() {
@@ -89,15 +78,6 @@ func (p *ProxyService) StartProxy() {
 			log.Fatal("Proxy failed to start: ", srvErr)
 		default:
 			log.Fatal("Proxy did not become ready in time: ", err)
-		}
-	}
-
-	// If running on macOS, configure system HTTP(S) proxy settings to use the local proxy.
-	if runtime.GOOS == "darwin" {
-		if err := setMacSystemProxy(PROXY_PORT); err != nil {
-			log.Printf("Warning: failed to set macOS system proxy: %v", err)
-		} else {
-			log.Printf("macOS system HTTP(S) proxy set to 127.0.0.1:%d", PROXY_PORT)
 		}
 	}
 }
@@ -188,13 +168,14 @@ func (p *ProxyService) ServiceName() string {
 // instance via the app property.
 // OPTIONAL: This method is optional.
 func (p *ProxyService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	if instance != nil {
+		log.Printf("Proxy Service already started")
+		return nil
+	}
+	instance = p
 	p.ctx = ctx
 	p.options = options
-	// Initialise the SQLite database in the user's PathDataHome-like directory
-	if err := p.initDB(); err != nil {
-		log.Printf("Failed to init DB: %v", err)
-		// Do not fail startup; proxy can still run, but blocking won't work.
-	}
+	p.isPaused = true
 	// Start the local HTTP proxy as soon as the application starts.
 	go p.StartProxy()
 	return nil
@@ -204,41 +185,16 @@ func (p *ProxyService) ServiceStartup(ctx context.Context, options application.S
 // You can use this to clean up any resources you have allocated
 // OPTIONAL: This method is optional.
 func (p *ProxyService) ServiceShutdown() error {
-	// Close time-series DB if open
-	if p.tDB != nil {
-		if err := p.tDB.Close(); err != nil {
-			log.Printf("Warning: failed to close tstorage: %v", err)
-		}
-	}
 	// On macOS, revert the system proxy settings we previously applied.
 	if runtime.GOOS == "darwin" {
-		if err := unsetMacSystemProxy(); err != nil {
-			log.Printf("Warning: failed to unset macOS system proxy: %v", err)
-		} else {
-			log.Printf("macOS system HTTP(S) proxy disabled")
+		if !p.isPaused {
+			if err := unsetMacSystemProxy(); err != nil {
+				log.Printf("Warning: failed to unset macOS system proxy: %v", err)
+			} else {
+				log.Printf("macOS system HTTP(S) proxy disabled")
+			}
 		}
 	}
-	return nil
-}
-
-// initDB opens/creates the SQLite database in the user's data home directory and creates the table if needed.
-func (p *ProxyService) initDB() error {
-	dataDir := application.Path(application.PathDataHome)
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create data dir: %w", err)
-	}
-
-	tDBPath := filepath.Join(dataDir, "logs.db")
-	storage, err := tstorage.NewStorage(
-		tstorage.WithDataPath(tDBPath),
-	)
-
-	if err != nil {
-		return fmt.Errorf("failed to create tstorage: %w", err)
-	}
-
-	p.tDB = storage
-	p.tDBPath = tDBPath
 	return nil
 }
 
@@ -295,42 +251,25 @@ func unsetMacSystemProxy() error {
 	return firstErr
 }
 
-// logRequest writes a point to the time-series database capturing request metadata and decision.
-func (p *ProxyService) logRequest(host, method, path string, port int, approved bool, duration int64) {
-	if p == nil || p.tDB == nil {
-		return
-	}
-	value := duration
-	decision := "rejected"
-	if approved {
-		decision = "approved"
-	}
-	labels := []tstorage.Label{
-		{Name: "host", Value: host},
-		{Name: "method", Value: strings.ToUpper(method)},
-		{Name: "path", Value: path},
-		{Name: "port", Value: strconv.Itoa(port)},
-		{Name: "decision", Value: decision},
-	}
-	pt := tstorage.Row{
-		Metric: "proxy_requests",
-		Labels: labels,
-		DataPoint: tstorage.DataPoint{
-			Timestamp: time.Now().UnixMilli(),
-			Value:     float64(value),
-		},
-	}
-	var rows []tstorage.Row
-	rows = append(rows, pt)
-	if err := p.tDB.InsertRows(rows); err != nil {
-		log.Printf("warning: failed to write request log: %v", err)
-	}
-}
-
 func (p *ProxyService) PauseProxy() error {
-	return unsetMacSystemProxy()
+	if p.isPaused {
+		return nil
+	}
+	err := unsetMacSystemProxy()
+	if err != nil {
+		return err
+	}
+	p.isPaused = true
+	return nil
 }
 
 func (p *ProxyService) ResumeProxy() error {
-	return setMacSystemProxy(PROXY_PORT)
+	if !p.isPaused {
+		return nil
+	}
+	if err := setMacSystemProxy(PROXY_PORT); err != nil {
+		return err
+	}
+	p.isPaused = true
+	return nil
 }

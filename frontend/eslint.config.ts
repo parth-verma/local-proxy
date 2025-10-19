@@ -6,6 +6,7 @@ import json from "@eslint/json";
 import css from "@eslint/css";
 import { defineConfig } from "eslint/config";
 import reactHooks from 'eslint-plugin-react-hooks';
+import pluginQuery from '@tanstack/eslint-plugin-query'
 
 export default defineConfig([
   { files: ["**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"], plugins: { js }, extends: ["js/recommended"], languageOptions: { globals: globals.browser } },
@@ -14,6 +15,7 @@ export default defineConfig([
   { files: ["**/*.jsonc"], plugins: { json }, language: "json/jsonc", extends: ["json/recommended"] },
   { files: ["**/*.css"], plugins: { css }, language: "css/css", extends: ["css/recommended"] },
   reactHooks.configs.flat['recommended-latest'],
+  ...pluginQuery.configs['flat/recommended'],
 ], {
   rules: {
     "react/react-in-jsx-scope": "off"

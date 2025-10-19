@@ -1,41 +1,41 @@
-import  { useState } from 'react'
+import { useState } from 'react';
+import { DomainManager } from './components/DomainManager';
+import { Dashboard } from './components/Dashboard';
+import { Navigation } from './components/Navigation';
+import { Toaster } from "@/components/ui/sonner"
 
 function App() {
-  const [name, setName] = useState<string>('');
-  const [result] = useState<string>('Please enter your name below 👇');
-  const [time] = useState<string>('Listening for Time event...');
-
-  const doGreet = () => {
-    let localName = name;
-    if (!localName) {
-      localName = 'anonymous';
-    }
-  }
+  const [activeTab, setActiveTab] = useState<'domains' | 'dashboard'>('domains');
 
   return (
-      <div className="container">
-        <div>
-          <a data-wml-openURL="https://wails.io">
-            <img src="/wails.png" className="logo" alt="Wails logo"/>
-          </a>
-          <a data-wml-openURL="https://reactjs.org">
-            <img src="/react.svg" className="logo react" alt="React logo"/>
-          </a>
-        </div>
-        <h1>Wails + React</h1>
-        <div className="result">{result}</div>
-        <div className="card">
-          <div className="input-box">
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} type="text" autoComplete="off"/>
-            <button className="btn" onClick={doGreet}>Greet</button>
-          </div>
-        </div>
-        <div className="footer">
-          <div><p>Click on the Wails logo to learn more</p></div>
-          <div><p>{time}</p></div>
-        </div>
+    <div className="min-h-screen bg-gray-50">
+      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+      
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        {activeTab === 'domains' && (
+          <>
+            <div className="mb-8 text-center">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Local Proxy</h1>
+              <p className="text-gray-600">Manage your blocked domains and proxy settings</p>
+            </div>
+            <DomainManager />
+          </>
+        )}
+        
+        {activeTab === 'dashboard' && (
+          <>
+            <div className="mb-8 text-center">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Proxy Analytics</h1>
+              <p className="text-gray-600">Monitor connection trends and request details</p>
+            </div>
+            <Dashboard />
+          </>
+        )}
       </div>
-  )
+      
+      <Toaster />
+    </div>
+  );
 }
 
 export default App
