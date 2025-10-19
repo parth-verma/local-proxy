@@ -67,7 +67,7 @@ jobs:
       run: |
         mkdir -p private_keys/
         echo '${{ secrets.APP_STORE_CONNECT_API_KEY }}' > private_keys/AuthKey_58WU6JT82V.p8
-        echo '${{ secrets.APPLE_CERTIFICATE }}' | base64 -d > private_keys/AuthKey.p12
+        echo '${{ secrets.APPLE_CERTIFICATE }}' | base64 -d > private_keys/certificate.p12
 
     - name: Sign macOS application
       if: matrix.platform == 'darwin'
@@ -75,7 +75,7 @@ jobs:
       with:
         input_path: bin/local-proxy.app
         output_path: dist/local-proxy.app
-        p12_file: private_keys/AuthKey.p12
+        p12_file: private_keys/certificate.p12
         p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         notarize: true
         staple: true
