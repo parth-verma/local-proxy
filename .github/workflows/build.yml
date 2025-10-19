@@ -66,8 +66,8 @@ jobs:
       if: matrix.platform == 'darwin'
       run: |
         mkdir -p private_keys/
-        echo '${{ secrets.APP_STORE_CONNECT_API_KEY }}' > private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p8
-        echo '${{ secrets.APPLE_CERTIFICATE }}' > private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p12
+        echo '${{ secrets.APP_STORE_CONNECT_API_KEY }}' > private_keys/AuthKey.p8
+        echo '${{ secrets.APPLE_CERTIFICATE }}' | base64 -d > private_keys/AuthKey.p12
 
     - name: Sign macOS application
       if: matrix.platform == 'darwin'
@@ -75,12 +75,12 @@ jobs:
       with:
         input_path: bin/local-proxy.app
         output_path: dist/local-proxy.app
-        p12_file: private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p12
+        p12_file: private_keys/AuthKey.p12
         p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         notarize: true
         staple: true
         app_store_connect_api_issuer: ${{ secrets.APP_STORE_CONNECT_API_ISSUER }}
-        app_store_connect_api_key: private_keys/AuthKey_{{ secrets.APPLE_CERTIFICATE_ID }}.p8
+        app_store_connect_api_key: private_keys/AuthKey.p8
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
