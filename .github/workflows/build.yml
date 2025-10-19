@@ -66,8 +66,11 @@ jobs:
       if: matrix.platform == 'darwin'
       run: |
         mkdir -p private_keys/
-        echo '${{ secrets.APP_STORE_CONNECT_API_KEY }}' > private_keys/AuthKey_58WU6JT82V.p8
         echo '${{ secrets.APPLE_CERTIFICATE }}' | base64 -d > private_keys/certificate.p12
+    - name: Write API Key to file
+      env:
+        API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+      run: echo $API_KEY > app_store_key.json
 
     - name: Sign macOS application
       if: matrix.platform == 'darwin'
@@ -79,9 +82,7 @@ jobs:
         p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         notarize: true
         staple: true
-        app_store_connect_api_key_json_file: ''
-        app_store_connect_api_issuer: ${{ secrets.APP_STORE_CONNECT_API_ISSUER }}
-        app_store_connect_api_key: 58WU6JT82V
+        app_store_connect_api_key_json_file: app_store_key.json
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
