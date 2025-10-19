@@ -51,6 +51,7 @@ func main() {
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
+			ActivationPolicy: application.ActivationPolicyAccessory,
 		},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.myapp.local-proxy",
