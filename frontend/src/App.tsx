@@ -1,31 +1,16 @@
-import { useState, useEffect } from 'react'
-import {GreetService} from "../bindings/changeme";
-import {Events, WML} from "@wailsio/runtime";
+import  { useState } from 'react'
 
 function App() {
   const [name, setName] = useState<string>('');
-  const [result, setResult] = useState<string>('Please enter your name below 👇');
-  const [time, setTime] = useState<string>('Listening for Time event...');
+  const [result] = useState<string>('Please enter your name below 👇');
+  const [time] = useState<string>('Listening for Time event...');
 
   const doGreet = () => {
     let localName = name;
     if (!localName) {
       localName = 'anonymous';
     }
-    GreetService.Greet(localName).then((resultValue: string) => {
-      setResult(resultValue);
-    }).catch((err: any) => {
-      console.log(err);
-    });
   }
-
-  useEffect(() => {
-    Events.On('time', (timeValue: any) => {
-      setTime(timeValue.data);
-    });
-    // Reload WML so it picks up the wml tags
-    WML.Reload();
-  }, []);
 
   return (
       <div className="container">

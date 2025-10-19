@@ -36,7 +36,7 @@ tasks:
           BUILD_FLAGS:
             ref: .BUILD_FLAGS
     cmds:
-      - yarn run {{.BUILD_COMMAND}} -q
+      - yarn run {{.BUILD_COMMAND}}
     env:
       PRODUCTION: '{{.PRODUCTION | default "false"}}'
     vars:
